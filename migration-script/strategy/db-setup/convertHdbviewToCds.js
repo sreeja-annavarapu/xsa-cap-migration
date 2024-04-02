@@ -15,37 +15,64 @@ const convertHdbviewToCds = (directory, extension) => {
     }
   };
 
-
-
-  const convertToCds = (data) =>{
+  const getDefineView = (data) =>{
     const lines = data.split('\n').filter((line) => line.trim() !== ''); 
-    // let viewIndex = data.indexOf('VIEW');
-    // let viewNameStartIndex = data.indexOf('"', viewIndex) + 1;
-    // let viewNameEndIndex = data.indexOf('"', viewNameStartIndex);
-    // let viewName = data.substring(viewNameStartIndex, viewNameEndIndex);
-  
-    // let fromIndex = data.indexOf('FROM');
-    // let tableNameStartIndex = data.indexOf('"', fromIndex) + 1;
-    // let tableNameEndIndex = data.indexOf('"', tableNameStartIndex);
-    // let tableName = data.substring(tableNameStartIndex, tableNameEndIndex);
-  
-    // let asIndex = data.indexOf('AS', fromIndex);
-    // let aliasStartIndex = data.indexOf('"', asIndex) + 1;
-    // let aliasEndIndex = data.indexOf('"', aliasStartIndex);
-    // let alias = data.substring(aliasStartIndex, aliasEndIndex);
-      
-    // console.log('viewName: ', viewName); 
-    // console.log('alias: ', alias);  
-    // console.log('tableName: ', tableName); 
+    let entityName = lines[0].replace(/view /ig, '').trim().replace(' (', '').replace(/"/g, '').replace(/\./g, '_');
 
-    let viewSplit = data.split('VIEW');
-    let fromSplit = viewSplit[1].split('FROM');
-    let asSplit = fromSplit[1].split('AS');
+    let viewIndex = data.indexOf('VIEW');
+    let viewNameStartIndex = data.indexOf('"', viewIndex) + 1;
+    let viewNameEndIndex = data.indexOf('"', viewNameStartIndex);
+    let viewName = data.substring(viewNameStartIndex, viewNameEndIndex);
+    viewName = viewName.replace(/\./g, "_");
+  
+    let fromIndex = data.indexOf('FROM');
+    let tableNameStartIndex = data.indexOf('"', fromIndex) + 1;
+    let tableNameEndIndex = data.indexOf('"', tableNameStartIndex);
+    let tableName = data.substring(tableNameStartIndex, tableNameEndIndex);
+  
+    let asIndex = data.indexOf('AS', fromIndex);
+    let alias
+    if(asIndex !== -1){
+      let aliasStartIndex = data.indexOf('"', asIndex) + 1;
+      let aliasEndIndex = data.indexOf('"', aliasStartIndex);
+      alias = data.substring(aliasStartIndex, aliasEndIndex);
+      alias = alias.split("_")[0];
+    }
 
-    
-    const newFileContent = "viewName";
-    const entityName = "tableName"
-    return {newFileContent , entityName}
+    let whereIndex = data.indexOf('WHERE');
+    let whereClause = "";
+    if(whereIndex !== -1){
+        whereClause = data.substring(whereIndex + 'WHERE'.length).trim();
+    }
+    const defineOutput = `Entity ${viewName}`
+    // const defineOutput = `Entity ${viewName} as select from ${tableName} ${alias ? "as " + alias : ""}`
+    return {defineOutput,entityName,whereClause}
+  }
+
+  const getSelectFields = (data)=>{
+    let start = data.indexOf('AS SELECT') + 'AS SELECT'.length;
+    let end = data.indexOf('FROM');
+    let subString = data.substring(start, end).trim();
+    let arrayOfSelectField = subString.split(',').map(line => line.trim());
+    return {arrayOfSelectField};
+  }
+  const convertToCds = (data) =>{
+    let {defineOutput,entityName,whereClause} = getDefineView(data)
+    let {arrayOfSelectField} = getSelectFields(data)
+    let selectFieldFinalResult =  arrayOfSelectField.map(field => {
+      return field.replace(/_\$.*?\./g, '.').replace(/"/g, '').trim();
+    });
+
+    //FINAL DATA
+    const newFileContent = [
+      `@cds.persistence.exists`,
+      `${defineOutput} {`,
+      ...selectFieldFinalResult.map((name) => `  ${name} ;`),
+      '}',
+      `WHERE ${whereClause}`
+    ].join('\n');
+
+    return {newFileContent,entityName}
   }
 
 
