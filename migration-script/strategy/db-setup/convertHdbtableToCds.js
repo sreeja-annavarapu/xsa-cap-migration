@@ -4,13 +4,20 @@ const shell = require("shelljs");
 const convertHdbtableToCds = (directory, extension) => {
   try {
     const files = shell.find(directory).filter((file) => file.endsWith(extension));
+    let proxyCdsArray = []
+    let proxySynonymArray = []
     files.forEach(file => {
       let data = fs1.readFileSync(file, "utf8");
-      let { newFileContent, entityName, planeColumnQuotedTable, hdbViewResult} = convertToCds(data);
-      if(newFileContent) fs1.writeFileSync(`${entityName}.cds`, newFileContent);
-      if(planeColumnQuotedTable) fs1.writeFileSync(`${entityName}.hdbsynonym`, planeColumnQuotedTable);
-      if(hdbViewResult) fs1.writeFileSync(`${entityName}.hdbview`, hdbViewResult);  
+      let { newFileContent, planeColumnQuotedTable} = convertToCds(data);
+      if(newFileContent) proxyCdsArray.push(newFileContent);
+      if(planeColumnQuotedTable) proxySynonymArray.push(planeColumnQuotedTable);
     });
+    if(proxyCdsArray.length > 0) fs1.writeFileSync('Proxy_Table.cds',proxyCdsArray.join("\n\n"));
+    if(proxySynonymArray.length > 0) { 
+      let jsonString = proxySynonymArray.join(",\n"); 
+      let result = '{\n' + jsonString + '\n}';      
+      fs1.writeFileSync('Proxy_Table.hdbsynonym', result); 
+  }
   } catch (error) {
     console.error(`Error: ${error}`);
   }
@@ -33,9 +40,9 @@ const convertSqlToAssociation = (sqlString) => {
       let asIndex = line.indexOf(' AS ');
       let onIndex = line.indexOf(' ON ');
       
-      let table = line.substring(line.indexOf('JOIN') + 4, asIndex).trim();
-      let alias = line.substring(asIndex + 3, onIndex).trim();
-      let rightId = line.substring(onIndex+ 3).trim();       
+      let table = line.substring(line.indexOf('JOIN') + 4, asIndex).trim().toUpperCase();
+      let alias = line.substring(asIndex + 3, onIndex).trim().toUpperCase();
+      let rightId = line.substring(onIndex+ 3).trim().toUpperCase();       
       let associationType = line.includes("MANY TO MANY JOIN") ? "Association to many" : "Association to";
  
       return `${alias} : ${associationType} ${table} on ${rightId};`;    
@@ -48,10 +55,14 @@ const convertSqlToAssociation = (sqlString) => {
           let onIndex = line.indexOf("ON");
           let equalsIndex = line.indexOf("=");
   
-          let table = line.substring(0, asIndex).replace(/"/g, '').replace(/JOIN/g, '').trim().split(".").pop();
-          let alias = line.substring(asIndex + 2, onIndex).replace(/\./g, '_').trim().replace(/"/g, '');
-          let rightId = line.substring(equalsIndex + 1).trim().replace(/"/g, '').replace(/\./g, '_') .replace(/,/g, '').split("_").pop();
-          return `${alias}:Association to ${table} on ${alias}.${rightId} = $self.${alias}_${rightId};`;
+          let table = line.substring(0, asIndex).replace(/"/g, '').replace(/JOIN/g, '').trim().replace(/\./g, '_').replace(/::/g, '_').toUpperCase();
+          let alias = line.substring(asIndex + 2, onIndex).replace(/\./g, '_').trim().replace(/"/g, '').toUpperCase();
+          let rightEleemnt  = line.substring(equalsIndex + 1).trim().replace(/"/g, '').replace(/\./g, '_').replace(/,/g, '').toUpperCase();
+          let rightId = rightEleemnt.split("_").pop()
+          if(rightEleemnt.includes("_")){
+            return `${alias}:Association to ${table} on ${alias}.${rightId} = $self.${alias}_${rightId};`;
+          }
+          return `${alias}:Association to ${table} on ${rightId} = $self.${rightId};`;
       })
   }
 }
@@ -75,7 +86,7 @@ const convertDbTypes = (types) => {
       case types.startsWith('NVARCHAR'):
         return `String(${match[1].trim()})`;
       case types.startsWith('VARCHAR'):
-        return `String(${match[1].trim()})`;
+        return `hana.VARCHAR(${match[1].trim()})`;
       case types.startsWith('ST_POINT'):
         return `hana.ST_POINT(${match[1].trim()})`;
       case types.startsWith('ST_GEOMETRY'):
@@ -84,15 +95,16 @@ const convertDbTypes = (types) => {
   }
   switch (types) {
     case 'DECIMAL':
-      return 'Decimal';
+      return 'DecimalFloat';
     case 'NVARCHAR':
       return 'String';
     case 'INTEGER':
     case 'INT':
       return 'Integer';
     case 'TINYINT':
+      return 'hana.TINYINT'
     case 'SMALLINT':
-      return 'Int16';
+      return 'hana.SMALLINT';
     case 'MEDIUMINT':
       return 'Int32';
     case 'BIGINT':
@@ -100,27 +112,43 @@ const convertDbTypes = (types) => {
     case 'NUMERIC':
     case 'FLOAT':
     case 'REAL':
+      return 'hana.REAL'
     case 'DOUBLE':
-      return 'Double';
+      return 'BinaryFloat';
     case 'CHAR':
     case 'NCHAR':
     case 'VARCHAR':
-    case 'TEXT':
+      return 'hana.VARCHAR'
+    case 'SHORTTEXT':
       return 'String'
-    case 'DATE':
-      return 'Date';
-    case 'TIME':
-      return 'Time';
+    case 'TEXT':
+        return 'LargeString'
     case 'DATETIME':
       return 'DateTime';
     case 'TIMESTAMP':
     case 'LONGDATE':
     case 'SECONDDATE':
-      return 'Timestamp';
+      return 'UTCDateTime';
     case 'NCLOB':
      return 'LargeString'
     case 'BLOB':
       return 'LargeBinary'
+    case 'DAYDATE':
+    case 'DATE':
+      return 'LocalDate'
+    case 'SMALLDECIMAL':
+      return 'hana.SMALLDECIMAL'
+    case 'VARBINARY':
+      return 'Binary'
+    case 'ALPHANUM':
+      return 'hana.ALPHANUM'
+    case 'BINARY':
+      return 'hana.BINARY'
+    case 'TIME':
+    case 'SECONDTIME':
+      return 'LocalTime'
+    case 'CLOB':
+      return 'hana.CLOB'
     case 'ST_POINT':
       return 'hana.ST_POINT'
     case 'ST_GEOMETRY':
@@ -131,30 +159,18 @@ const convertDbTypes = (types) => {
 }
 
 const convertToHdbsynonym = (tableName) =>{
-    return `{
-  ${tableName.toUpperCase() .replace(/"/g, '').replace(/\./g, '_').replace(/::/g, '_')} : {
+    return `"${tableName.toUpperCase() .replace(/"/g, '').replace(/\./g, '_').replace(/::/g, '_')}" : {
       "target": {
         "object" : ${tableName}
       }
-    }
-  }`
-}
-
-const convertTohdbview = (tableName,entityName,columns) =>{
-  const hdbviewOutput = [
-    `VIEW ${entityName.toUpperCase()} AS SELECT`,
-    ...columns.map((name) => `  ${name}  AS ${name.toUpperCase().replace(/"/g, '').replace(/\./g, '_')};`),
-   `FROM ${tableName}`,
-  ].join('\n');
-
-  return hdbviewOutput
+    }`
 }
 
 const convertToCds = (data) =>{
 
-  const sqlDataTypes = ['NVARCHAR','DECIMAL','INTEGER','INT','TINYINT','SMALLINT','MEDIUMINT','BIGINT','NUMERIC','FLOAT','DOUBLE','NCHAR','CHAR','VARCHAR','TEXT','DATE','TIME','DATETIME','LONGDATE','TIMESTAMP','SECONDDATE','NCLOB','BLOB','ST_POINT','ST_GEOMETRY'];
+  const sqlDataTypes = ['NVARCHAR','SHORTTEXT','REAL','ALPHANUM','DECIMAL','SMALLDECIMAL','SECONDTIME','DAYDATE','BINARY','VARBINARY','INTEGER','INT','TINYINT','SMALLINT','MEDIUMINT','BIGINT','NUMERIC','FLOAT','DOUBLE','NCHAR','CHAR','VARCHAR','TEXT','DATE','TIME','DATETIME','LONGDATE','TIMESTAMP','SECONDDATE','NCLOB','BLOB','ST_POINT','ST_GEOMETRY','CLOB'];
   const lines = data.split('\n').filter((line) => line.trim() !== ''); 
-  let entityName = lines[0].replace(/column table /ig, '').trim().replace(' (', '');
+  let entityName = lines[0].replace(/column table /ig, '').trim().replace(' (', '').toUpperCase();
   let tableName = entityName;
   entityName = entityName.replace(/"/g, '').replace(/\./g, '_').replace(/::/g, '_');
 
@@ -179,8 +195,8 @@ const convertToCds = (data) =>{
       //CHECKING ONLY DATATYPES BEFORE MAPING
       if(matches.length > 1 && sqlDataTypes.includes(dataTypesCleanUp(matches[1]).split('(')[0].replace(/['"]+/g, '').toUpperCase().trim())){
         columnsForViews.push(matches[0].replace(/\)+/, '').trim())
-        let name = matches[0].replace(/"/g, '').replace(/\)+/, '').trim().replace(/\./g, '_');
-        if (name.toUpperCase() !== "COMMENT") {
+        let name = matches[0].replace(/"/g, '').replace(/\)+/, '').trim().replace(/\./g, '_').toUpperCase();
+        if (name !== "COMMENT") {
           //OPTIMIZATION BY POPING MAPPED KEYS IN STACK
             for(let j=0;j<keyNamesArray.length;j++){
               if (name === keyNamesArray[j]) {
@@ -221,12 +237,8 @@ const convertToCds = (data) =>{
       }
     }
   }
-  let planeColumnQuotedTable = isEntityQuoted && !columnQuote ? convertToHdbsynonym(tableName) : undefined;
-  let quotedColumnQuotedTable = columnQuote && isEntityQuoted;
-  // let hdbViewResult = quotedColumnQuotedTable ? (planeColumnQuotedTable = convertToHdbsynonym(tableName), convertTohdbview(tableName,entityName,columnsForViews)) : undefined;
-  let hdbViewResult = undefined;
-  if(quotedColumnQuotedTable) planeColumnQuotedTable = convertToHdbsynonym(tableName);
-
+  let planeColumnQuotedTable = isEntityQuoted ? convertToHdbsynonym(tableName) : undefined;
+  
   const newFileContent = [
     `@cds.persistence.exists`,
     `Entity ${entityName} {`,
@@ -237,9 +249,7 @@ const convertToCds = (data) =>{
 
   return {
     newFileContent,
-    entityName,
-    planeColumnQuotedTable,
-    hdbViewResult
+    planeColumnQuotedTable
   }
 }
 
