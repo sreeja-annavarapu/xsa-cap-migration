@@ -16,7 +16,7 @@ const convertHdbtableToCds = (directory, extension) => {
     if(proxySynonymArray.length > 0) { 
       let jsonString = proxySynonymArray.join(",\n"); 
       let result = '{\n' + jsonString + '\n}';      
-      fs1.writeFileSync('Proxy_Table.hdbsynonym', result); 
+      fs1.writeFileSync('src/Proxy_Table.hdbsynonym', result); 
   }
   } catch (error) {
     console.error(`Error: ${error}`);
