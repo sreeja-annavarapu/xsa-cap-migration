@@ -17,7 +17,7 @@ const convertHdbtableToCds = (directory, extension) => {
       let jsonString = proxySynonymArray.join(",\n"); 
       let result = '{\n' + jsonString + '\n}';      
       fs1.writeFileSync('src/Proxy_Table.hdbsynonym', result); 
-  }
+    } 
   } catch (error) {
     console.error(`Error: ${error}`);
   }
@@ -94,8 +94,10 @@ const convertDbTypes = (types) => {
     }
   }
   switch (types) {
+    case 'BOOLEAN':
+      return 'Boolean';
     case 'DECIMAL':
-      return 'DecimalFloat';
+      return 'Decimal';
     case 'NVARCHAR':
       return 'String';
     case 'INTEGER':
@@ -114,7 +116,7 @@ const convertDbTypes = (types) => {
     case 'REAL':
       return 'hana.REAL'
     case 'DOUBLE':
-      return 'BinaryFloat';
+      return 'Double';
     case 'CHAR':
     case 'NCHAR':
     case 'VARCHAR':
@@ -128,14 +130,13 @@ const convertDbTypes = (types) => {
     case 'TIMESTAMP':
     case 'LONGDATE':
     case 'SECONDDATE':
-      return 'UTCDateTime';
+      return 'Timestamp';
     case 'NCLOB':
      return 'LargeString'
     case 'BLOB':
       return 'LargeBinary'
-    case 'DAYDATE':
     case 'DATE':
-      return 'LocalDate'
+      return 'Date'
     case 'SMALLDECIMAL':
       return 'hana.SMALLDECIMAL'
     case 'VARBINARY':
@@ -145,8 +146,7 @@ const convertDbTypes = (types) => {
     case 'BINARY':
       return 'hana.BINARY'
     case 'TIME':
-    case 'SECONDTIME':
-      return 'LocalTime'
+      return 'Time';
     case 'CLOB':
       return 'hana.CLOB'
     case 'ST_POINT':
@@ -168,7 +168,7 @@ const convertToHdbsynonym = (tableName) =>{
 
 const convertToCds = (data) =>{
 
-  const sqlDataTypes = ['NVARCHAR','SHORTTEXT','REAL','ALPHANUM','DECIMAL','SMALLDECIMAL','SECONDTIME','DAYDATE','BINARY','VARBINARY','INTEGER','INT','TINYINT','SMALLINT','MEDIUMINT','BIGINT','NUMERIC','FLOAT','DOUBLE','NCHAR','CHAR','VARCHAR','TEXT','DATE','TIME','DATETIME','LONGDATE','TIMESTAMP','SECONDDATE','NCLOB','BLOB','ST_POINT','ST_GEOMETRY','CLOB'];
+  const sqlDataTypes = ['NVARCHAR','BOOLEAN','SHORTTEXT','REAL','ALPHANUM','DECIMAL','SMALLDECIMAL','DAYDATE','BINARY','VARBINARY','INTEGER','INT','TINYINT','SMALLINT','MEDIUMINT','BIGINT','NUMERIC','FLOAT','DOUBLE','NCHAR','CHAR','VARCHAR','TEXT','DATE','TIME','DATETIME','LONGDATE','TIMESTAMP','SECONDDATE','NCLOB','BLOB','ST_POINT','ST_GEOMETRY','CLOB'];
   const lines = data.split('\n').filter((line) => line.trim() !== ''); 
   let entityName = lines[0].replace(/column table /ig, '').trim().replace(' (', '').toUpperCase();
   let tableName = entityName;
@@ -180,7 +180,7 @@ const convertToCds = (data) =>{
     let match = data.match(/PRIMARY KEY\s*\(\s*([^)]+?)\s*\)\s*\)/s);
     if (match && match[1]) {
       let keys = match[1].split(',');
-      keyNamesArray = keys.map(key => key.trim().replace(/['"]/g, '').replace(/\./g, '_'));
+      keyNamesArray = keys.map(key => key.trim().replace(/['"]/g, '').replace(/\./g, '_').toUpperCase());
     } 
   }
 
@@ -253,4 +253,4 @@ const convertToCds = (data) =>{
   }
 }
 
-module.exports = convertHdbtableToCds;
+module.exports = {convertHdbtableToCds,convertDbTypes};

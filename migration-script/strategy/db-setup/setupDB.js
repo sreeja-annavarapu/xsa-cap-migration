@@ -25,9 +25,10 @@ const {
 } = require("./annotationChanges");
 const updateSchema = require("./updateSchema");
 const findFiles = require("./findFiles");
-const convertHdbtableToCds = require("./convertHdbtableToCds");
 const convertHdbviewToCds = require("./convertHdbviewToCds");
 const inlineConfig = require("./inlineConfig");
+// const convertCalcviewToCds = require("./convertCalcviewToCds");
+const { convertHdbtableToCds } = require("./convertHdbtableToCds");
 
 const setup_db = async (source, destination, option) => {
   try {
@@ -40,6 +41,8 @@ const setup_db = async (source, destination, option) => {
     convertHdbcdsToCds(".", ".hdbcds", ".cds");
     console.log("Convert hdbtable to cds");
     convertHdbtableToCds(".", ".hdbtable")
+    // console.log("Convert hdbcalculationview to cds");
+    // convertCalcviewToCds(".",'.hdbcalculationview',destination)
     // console.log("Convert hdbviews to cds");
     // convertHdbviewToCds(".", ".hdbview")
     console.log("Using Calculation Views Modification");
